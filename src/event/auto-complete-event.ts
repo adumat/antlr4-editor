@@ -21,7 +21,7 @@ export class AutoCompleteEvent {
         completions = completions.map((completion) => {
             if (completion.range === undefined) {
                 const newCompletion = this.editor.createRuleCompletion(completion, this.rule);
-                return this.completionTemplateHandler.processCompletion(this.editor.createRuleCompletion(completion, this.rule));
+                return this.completionTemplateHandler.processCompletion(newCompletion);
             } else {
                 return this.completionTemplateHandler.processCompletion(completion);
             }

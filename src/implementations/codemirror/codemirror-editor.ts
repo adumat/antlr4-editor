@@ -65,10 +65,12 @@ export class CodeMirrorEditor implements AntlrEditor {
     private validators: Set<(rule: AntlrRuleWrapper) => AntlrRuleError>;
     private setValueEvent: boolean;
     private defaultCursorBlinkingRate: boolean;
+    private marksApplied: CodeMirror.TextMarker[];
 
     constructor(private parser: AntlrParser, private domContainer?: HTMLElement) {
         const mode = _.uniqueId('antlrGrammarMode');
 
+        this.marksApplied = [];
         this.displayDecorations = true;
         this.customErrors = new Set<AntlrRuleError>();
         this.changeSubject = new Subject<EditorChangeEvent>();
@@ -605,21 +607,23 @@ export class CodeMirrorEditor implements AntlrEditor {
         }
     }
 
-    private styleToken(token: AntlrTokenWrapper, styleClass?: string): void {
+    private styleToken(token: AntlrTokenWrapper, styleClass?: string): CodeMirror.TextMarker {
         const tokenRange = token.getRange();
         const tokenClass = (token.getName()) ? `antlr-token-${token.getName()}` : 'antlr-token';
 
-        this.editorImplementation.getDoc().markText({ch: tokenRange[0].column, line: tokenRange[0].line}, {
+        const markers = this.editorImplementation.getDoc().findMarks({ch: tokenRange[0].column, line: tokenRange[0].line}, {ch: tokenRange[1].column, line: tokenRange[1].line});
+        markers.filter(mark => mark.className.indexOf('antlr-token-') !== -1).map(mark => mark.clear());
+        return this.editorImplementation.getDoc().markText({ch: tokenRange[0].column, line: tokenRange[0].line}, {
             ch: tokenRange[1].column,
             line: tokenRange[1].line
         }, {className: `${tokenClass} ${styleClass ? styleClass : ''}`});
     }
 
-    private styleRule(rule: AntlrRuleWrapper, styleClass?: string): void {
+    private styleRule(rule: AntlrRuleWrapper, styleClass?: string): CodeMirror.TextMarker {
         const ruleRange = rule.getRange();
         const ruleClass = `antlr-rule-${rule.getName()}`;
 
-        this.editorImplementation.getDoc().markText({ch: ruleRange[0].column, line: ruleRange[0].line}, {
+        return this.editorImplementation.getDoc().markText({ch: ruleRange[0].column, line: ruleRange[0].line}, {
             ch: ruleRange[1].column,
             line: ruleRange[1].line
         }, {className: `${ruleClass} ${styleClass ? styleClass : ''}`});
@@ -698,6 +702,8 @@ export class CodeMirrorEditor implements AntlrEditor {
     }
 
     private executeDefaultStyling() {
+        this.marksApplied.splice(0, this.marksApplied.length).forEach(mark => mark.clear());
+
         if (this.defaultRuleStyles) {
             const rules = this.parser.getAllRules();
             const numberOfRules = rules.length;
@@ -711,7 +717,7 @@ export class CodeMirrorEditor implements AntlrEditor {
                     if (!_.isNil(this.defaultRuleStyles[ruleName])) {
                         const style = this.defaultRuleStyles[ruleName];
                         if (style) {
-                            this.styleRule(rule, style);
+                            this.marksApplied.push(this.styleRule(rule, style));
                         }
                     }
                 }
@@ -730,7 +736,7 @@ export class CodeMirrorEditor implements AntlrEditor {
                     let style = this.defaultTokenStyles[text];
 
                     if (style) {
-                        this.styleToken(token, style);
+                        this.marksApplied.push(this.styleToken(token, style));
                         continue;
                     }
 
@@ -738,8 +744,20 @@ export class CodeMirrorEditor implements AntlrEditor {
                     style = this.defaultTokenStyles[name];
 
                     if (style) {
-                        this.styleToken(token, style);
+                        this.marksApplied.push(this.styleToken(token, style));
                     }
+                }
+            }
+
+            const hiddenTokens = this.parser.getTokensOfAdditionalStreams();
+
+            for (let i = 0; i < hiddenTokens.length; i++) {
+                const hiddenToken = hiddenTokens[i];
+                const name = hiddenToken.getName();
+                const style = this.defaultTokenStyles[name];
+
+                if (style) {
+                    this.marksApplied.push(this.styleToken(hiddenToken, style));
                 }
             }
         }
